@@ -6,31 +6,31 @@ import SwiftUI
 import Combine
 
 struct ContentView: View {
-    init(viewModel: AppViewModel) {
-        self._viewModel = ObservedObject(wrappedValue: viewModel)
-    }
-    @ObservedObject private var viewModel: AppViewModel
-    @State private var letters: [Letter] = []
-    
+    @ObservedObject private var navCtrl = Navigator()
+    @State var viewModel = AppViewModel()
     var body: some View {
-        VStack {
-            Button("New") {
-                viewModel.startNewGame()
-            }.buttonStyle(.borderedProminent)
-            Spacer()
-            LetterGroup(letters: $letters) { arr in
-                let z = arr.prettyPrint()
-                print("Rearrange \(z)")
-                viewModel.rearrange(to: arr)
+        NavigationStack(path: $navCtrl.navPath){
+            WordScreen(viewModel: viewModel){
+                navCtrl.navigate(to: .GameHistory)
+            } onOptions: {
+                navCtrl.navigate(to: .GameOptions)
             }
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
-        .background(.yellow)
-        .onReceive(viewModel.$letters) { newValue in
-            print("New word in content view")
-            letters = newValue
+            
+            .navigationDestination(for: Route.self) { dest in
+                switch dest {
+                case .GameHistory:
+                    GameHistory(viewModel: viewModel){
+                        navCtrl.navigate(to: .SelectedGameHistory($0))
+                    }
+                    
+                case .SelectedGameHistory(let record):
+                    SelectedGameHistory(record: record)
+                    
+                case .GameOptions:
+                    GameOptions(viewModel: viewModel)
+                }
+                
+            }
         }
     }
 }

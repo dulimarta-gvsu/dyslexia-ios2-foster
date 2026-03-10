@@ -2,7 +2,9 @@ import SwiftUI
 
 struct LetterGroup: View {
     @Binding var letters: [Letter]
+    @Binding var color: Color
     var onRearrangeLetters: ([Letter]) -> Void
+    var onIncrementMoveCount: () -> Void
     
     @State var boxSize = CGSize.zero
     @State var startCellIndex: Int? = nil
@@ -12,6 +14,7 @@ struct LetterGroup: View {
     @State var draggedLetter: Letter? = nil
     @State var startPointerPosition = CGPoint.zero
     @GestureState var what = false
+    
     var body: some View {
         ZStack {
             let letterSize = min(80, (UIScreen.main.bounds.width - 32) / CGFloat(letters.count))
@@ -20,18 +23,18 @@ struct LetterGroup: View {
             // the relative position of the starting drag point w.r.t
             // to the HStack center
             if let draggedLetter {
-                BigLetter(letter: draggedLetter, size: letterSize)
+                BigLetter(letter: draggedLetter, size: letterSize, color: color)
                     .offset(x: dragOffset.x + startPointerPosition.x - boxSize.width / 2, y: dragOffset.y)
             }
             VStack {
                 HStack(spacing: 2) {
                     if letters.count > 0 {
                         ForEach(Array(self.letters.enumerated()), id: \.offset) {  pos, letter in
-                            BigLetter(letter: letter, size: letterSize)
+                            BigLetter(letter: letter, size: letterSize, color: color)
                         }
                     } else {
                         // Show a blank box if there are no letters
-                        BigLetter(letter: Letter(), size: letterSize)
+                        BigLetter(letter: Letter(), size: letterSize, color: color)
                     }
                 }
                 .onGeometryChange(for: CGSize.self,
@@ -84,6 +87,11 @@ struct LetterGroup: View {
                             dragOffset = CGPoint.zero
                             return
                         }
+                        
+                        if (startCellIndex != blankCellIndex){
+                            self.onIncrementMoveCount()
+                        }
+                        
                         letters[blankCellIndex!] = draggedLetter!
                         draggedLetter = nil
                         pointerIndex = nil
@@ -104,10 +112,12 @@ struct BigLetter: View {
     private let ch: String
     private let pt: Int
     let size: CGFloat
-    init(letter: Letter, size: CGFloat = 44) {
+    let color: Color
+    init(letter: Letter, size: CGFloat = 44, color: Color) {
         self.ch = String(letter.text)
         self.pt = letter.point
         self.size = size
+        self.color = color
     }
     var body: some View {
         ZStack{
@@ -115,8 +125,12 @@ struct BigLetter: View {
                 .font(Font.system(size: 0.8 * self.size, weight: .bold))
         }
         .frame(width: self.size, height: self.size)
-        .background(self.pt == 0 ? .clear : .mint)
+        .background(self.pt == 0 ? .clear : self.color)
         .cornerRadius(10)
+        .overlay(alignment: .bottomTrailing){
+            Text(String(self.pt)).font(Font.system(size: 0.2 * self.size, weight: .bold)).padding(.bottom, size / 12).padding(.trailing, size / 12)
+            
+        }
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(.black, lineWidth: 2)

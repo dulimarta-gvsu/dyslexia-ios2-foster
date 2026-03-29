@@ -8,14 +8,14 @@
 import SwiftUI
 
 struct SelectedGameHistory: View {
-    let record: AppViewModel.WordRecord
+    let record: Games
     
     var body: some View {
         VStack{
             Text("Selected Game History")
             Text(" ")
             Text("Word: \(record.word)")
-            Text("Score: \(record.score)")
+            Text("Score: \(record.points)")
             Text("Moves: \(record.moves)")
             Text("Time: \(record.time)")
             Spacer()

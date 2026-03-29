@@ -8,14 +8,16 @@
 import SwiftUI
 
 struct GameHistory: View {
-    init(viewModel: AppViewModel, onSelectedGameHistory: @escaping (AppViewModel.WordRecord) -> Void){
+    
+    init(viewModel: AppViewModel, onSelectedGameHistory: @escaping (Games) -> Void){
         self._viewModel = ObservedObject(wrappedValue: viewModel)
         self.onSelectedGameHistory = onSelectedGameHistory
     }
+
     
     @ObservedObject private var viewModel: AppViewModel
     
-    private var onSelectedGameHistory: (AppViewModel.WordRecord) -> Void
+    private var onSelectedGameHistory: (Games) -> Void
     
     var body: some View {
         VStack{
@@ -27,11 +29,10 @@ struct GameHistory: View {
                         HStack {
                             Text(record.word)
                             Spacer()
-                            Text(record.score > 0 ? "Completed" : "Incomplete")
-                        }.contentShape(Rectangle())
-                            .onTapGesture {_ in
-                                self.onSelectedGameHistory(record)
-                            }
+                            Text(record.points > 0 ? "Completed" : "Incomplete")
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { self.onSelectedGameHistory(record) }
                         
                         if record.id != viewModel.gameHistory.last?.id {
                             Divider()

@@ -10,7 +10,7 @@ import Combine
 
 enum Route: Hashable{
     case GameHistory
-    case SelectedGameHistory(AppViewModel.WordRecord)
+    case SelectedGameHistory(Games)
     case GameOptions
 }
 

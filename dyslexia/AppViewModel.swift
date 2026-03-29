@@ -5,15 +5,56 @@
 import Foundation
 import Combine
 import SwiftUI
+import GRDB
+
+
 
 class AppViewModel: ObservableObject {
+    let appDB = AppDatabase.getInstance()
+    
+    private var dbObserver: DatabaseCancellable? = .none
+    
+    
     @Published var letters: [Letter] = []
     
-    private let vocabulary: Set<String> = ["sol", "mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune",                                                                                       "pluto", "helium", "oxygen", "hydrogen", "carbon", "nitrogen", "neon",
-                                           "calcium", "iron", "uranium", "phosphorous", "potassium", "copper",
-                                           "tungsten", "titanium", "plutonium", "magnesium", "sulfur", "sodium",
-                                           "argon", "mercury", "zinc", "boron", "cobalt", "platinum", "gold",
-                                           "nickel", "chlorine", "fluorine", "bromine", "iodine", "silver" ]
+    @Published var vocabulary: Set<String> = []
+    
+    func fetchWords() async{
+        let apiURL = "https://random-word-api.herokuapp.com/word"
+        let quantity = 1000
+        let url = URL(string: "\(apiURL)?number=\(quantity)")
+        
+    
+        let(rawData, rawResp) = try! await URLSession.shared.data(from: url!)
+        guard let response = rawResp as? HTTPURLResponse else {return}
+        debugPrint(response.statusCode)
+        let decodedData = try! JSONDecoder().decode([String].self, from: rawData)
+        self.vocabulary = Set(decodedData.map{$0.uppercased()})
+        
+        self.minLength = vocabulary.min(by: { $0.count < $1.count })!.count
+        self.maxLength = vocabulary.max(by: { $0.count < $1.count })!.count
+        
+        if self.minLength > self.curMinLength {
+            self.curMinLength = self.minLength
+        }
+        
+        if self.curMinLength > self.curMaxLength {
+            self.curMaxLength = self.maxLength
+        }
+        
+        print(self.minLength)
+        print(self.maxLength)
+        print(self.curMinLength)
+        print(self.curMaxLength)
+        
+    }
+    
+    
+    //private let vocabulary: Set<String> = ["sol", "mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune",                                                                                       "pluto", "helium", "oxygen", "hydrogen", "carbon", "nitrogen", "neon",
+                                      //     "calcium", "iron", "uranium", "phosphorous", "potassium", "copper",
+                                        //   "tungsten", "titanium", "plutonium", "magnesium", "sulfur", "sodium",
+                                          // "argon", "mercury", "zinc", "boron", "cobalt", "platinum", "gold",
+                                           //"nickel", "chlorine", "fluorine", "bromine", "iodine", "silver" ]
     
     private let letterScore: [String:Int] = ["A":1, "E":1, "I":1, "O":1, "U":1, "L":1, "N":1,
                                              "R":1, "S":1, "T":1, "D":2, "G":2, "B":3, "C":3,
@@ -23,11 +64,11 @@ class AppViewModel: ObservableObject {
     // same as selectedWord in android
     private var secretWord: String = ""
     
-    let minLength: Int
-    let maxLength: Int
+    var minLength: Int = 0
+    var maxLength: Int = 0
     
-    @Published var curMinLength: Int
-    @Published var curMaxLength: Int
+    @Published var curMinLength: Int = 0
+    @Published var curMaxLength: Int = 0
     
     var lengthRange: ClosedRange<Int> { curMinLength...curMaxLength }
 
@@ -66,24 +107,29 @@ class AppViewModel: ObservableObject {
         
         self.wordTime = 0
     }
+
     
-    struct WordRecord: Identifiable, Equatable, Hashable {
-        let id: UUID = UUID()
-        let word: String
-        let score: Int
-        let moves: Int
-        let time: Int
-    }
-    
-    @Published var gameHistory: [WordRecord] = []
+    @Published private(set) var gameHistory: [Games] = []
     
     init () {
-        self.minLength = vocabulary.min(by: { $0.count < $1.count})!.count
-        self.maxLength = vocabulary.max(by: { $0.count < $1.count})!.count
-        self.curMinLength = self.minLength
-        self.curMaxLength = self.maxLength
-        
-        self.startNewGame()
+        Task{
+            await self.fetchWords()
+            
+            let observation = ValueObservation.tracking(Games.fetchAll)
+            self.dbObserver = .none
+            let obs = observation.start(in: appDB.dbQueue, scheduling: .immediate) {
+                err in print("Error in observer \(err)")
+            } onChange: { (gg: [Games]) in
+                Task {
+                    await MainActor.run {
+                        self.gameHistory = gg
+                    }
+                }
+            }
+            self.dbObserver = obs
+            
+            self.startNewGame()
+        }
     }
     
     func startNewGame() {
@@ -95,7 +141,7 @@ class AppViewModel: ObservableObject {
             self.addGameRecord()
         }
         
-        while(self.secretWord == prevWord){
+        while(self.secretWord == prevWord || self.secretWord.count < self.curMinLength || self.secretWord.count > self.curMaxLength ){
             self.secretWord = vocabulary.randomElement()!.uppercased()
         }
         
@@ -122,10 +168,13 @@ class AppViewModel: ObservableObject {
         }
     }
     
-    func addGameRecord(){
+    func addGameRecord() {
         let prevRecord = self.gameHistory.last
-        
-        if(prevRecord?.word != self.secretWord){
+        let curWord = self.secretWord
+
+        print("Attempting to save game")
+        if(prevRecord?.word != curWord){
+            
             if (self.gameOver){
                 self.totalScore += self.wordScore
             }
@@ -134,9 +183,17 @@ class AppViewModel: ObservableObject {
                 self.wordScore = 0
             }
             
-            let newRecord = WordRecord(word: self.secretWord, score: self.wordScore, moves: self.moveCount, time: self.wordTime)
+            let scoredGame = Games(word: self.secretWord, points: self.wordScore, time: self.wordTime, moves: self.moveCount)
             
-            self.gameHistory.append(newRecord)
+            Task{
+                do {
+                    try await appDB.save(scoredGame)
+                }
+                catch {
+                    print("Failed to save game")
+                }
+            }
+                
         }
     }
     
@@ -145,7 +202,7 @@ class AppViewModel: ObservableObject {
     }
     
     func sortByScore(){
-        self.gameHistory.sort{ $0.score > $1.score }
+        self.gameHistory.sort{ $0.points > $1.points }
     }
     
     func sortByMoves(){
